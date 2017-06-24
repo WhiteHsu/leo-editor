@@ -201,20 +201,19 @@ class Cacher(object):
         child_v._linkAsNthChild(parent_v, parent_v.numberOfChildren())
         child_v.setVisited() # Supress warning/deletion of unvisited nodes.
         return is_clone, child_v
-    #@+node:ekr.20100705083838.5740: *5* casher.reportChangedClone
-    def reportChangedClone(self, child_tuple, child_v, fileName, parent_v):
+    #@+node:ekr.20100705083838.5740: *5* casher.reportChangedNode
+    def reportChangedNode(self, child_tuple, child_v, fileName, parent_v):
         '''
-        Report changes in a cloned node child_v *or* its descendants.
+        Report changes in a node child_v.
         
-        Cashed nodes can be out-of-synch with other nodes in two ways:
+        Nodes can be out-of-synch with other nodes in two ways:
         
-        Common: When switching git branches (cloned nodes only)
-        Rare:   When external files have been changed outside Leo
-                (cloned OR uncloned nodes).
+        Common: When switching git branches.
+        Rare:   When external files have been changed outside Leo.
         
         It is only essential to warn of the rare case.
         '''
-        trace = (False or g.app.debug) and not g.unitTesting
+        trace = (True or g.app.debug) and not g.unitTesting
         always_warn = True # True always warn about changed nodes.
         c = self.c
         h, b, gnx, grandChildren = child_tuple
@@ -229,11 +228,16 @@ class Cacher(object):
         )
         if same_head and same_body:
             return
-        if trace: g.trace('old %4s new %s %s' % (len(old_b), len(new_b), h))
-        must_warn = hasattr(child_v, 'tempRoots')
+        if trace:
+            g.trace('==========', repr(old_h), repr(new_h))
+            g.trace('old %4s new %s %s' % (len(old_b), len(new_b), h))
+        must_warn = hasattr(child_v, 'tempRoots') or not child_v.isCloned()
         if not hasattr(child_v, 'tempRoots'):
             child_v.tempRoots = set()
         child_v.tempRoots.add(fileName)
+        if must_warn:
+            self.warning('Warning: out-of-synch node: %s' % (h))
+            g.es_print('Retaining node in %s' % (fileName))
         if always_warn or must_warn:
             c.nodeConflictList.append(g.bunch(
                 tag='(cached)',
@@ -245,8 +249,6 @@ class Cacher(object):
                 h_new=h,
                 root_v=parent_v,
             ))
-        if must_warn:
-            g.error("cached read node changed:", child_v.h)
         # Always update the node.
         child_v.h, child_v.b = h, b
         child_v.setDirty()
@@ -261,7 +263,7 @@ class Cacher(object):
         junk_h, junk_b, gnx, grand_children = child_tuple
         child_v = self.c.fileCommands.gnxDict.get(gnx)
         if child_v:
-            self.reportChangedClone(child_tuple, child_v, fileName, parent_v)
+            self.reportChangedNode(child_tuple, child_v, fileName, parent_v)
             for grand_child in grand_children:
                 self.checkForChangedNodes(grand_child, fileName, child_v)
         elif not self.update_warning_given:
@@ -428,6 +430,10 @@ class Cacher(object):
         if 0: print(db.keys())
         db.clear()
         return True
+    #@+node:ekr.20170624135447.1: *3* cacher.warning
+    def warning(self, s):
+        '''Print a warning message in red.'''
+        g.es_print('Warning: %s' % s.lstrip(), color='red')
     #@-others
 #@+node:ekr.20100208223942.5967: ** class PickleShareDB
 _sentinel = object()
