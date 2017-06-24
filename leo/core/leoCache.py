@@ -141,8 +141,7 @@ class Cacher(object):
         '''
         Create outline structure from recursive aList built by makeCacheList.
         '''
-        new_read = True
-        trace = False and not g.unitTesting ### and fileName.find('leoAtFile.py') > -1
+        trace = False and not g.unitTesting
         c = self.c
         if not c:
             g.internalError('no c')
@@ -155,29 +154,17 @@ class Cacher(object):
         h, b, gnx, children = aList
         if h is not None:
             v = parent_v
-            if False and new_read:
-                self.reportChangedClone(
-                    child_tuple = aList,
-                    child_v = v,
-                    fileName = fileName,
-                    parent_v = parent_v,
-                )
-            else:
-                v._headString = g.toUnicode(h) # 2017/01/16
-                v._bodyString = g.toUnicode(b) # 2017/01/16
+            v._headString = g.toUnicode(h)
+            v._bodyString = g.toUnicode(b)
         for child_tuple in children:
             h, b, gnx, grandChildren = child_tuple
             if trace:
                 g.trace('%9s %3s %s' % (gnx, len(grandChildren), h.strip()))
             isClone, child_v = self.fastAddLastChild(fileName, gnx, parent_v)
             if isClone:
-                if new_read:
-                    self.updateChangedClone(child_tuple, fileName, parent_v)
-                else:
-                    self.reportChangedClone(child_tuple, child_v, fileName, parent_v)
+                self.checkForChangedNodes(child_tuple, fileName, parent_v)
             else:
-                self.createOutlineFromCacheList(
-                    child_v, child_tuple, fileName, top=False)
+                self.createOutlineFromCacheList(child_v, child_tuple, fileName, top=False)
     #@+node:ekr.20100208071151.5911: *5* cashe.fastAddLastChild
     # Similar to createThinChild4
 
@@ -227,17 +214,14 @@ class Cacher(object):
         
         It is only essential to warn of the rare case.
         '''
-        trace = (True or g.app.debug) and not g.unitTesting
-        sfn = g.shortFileName(fileName)
-        trace = sfn in ( 'leoAtFile.py', 'leoProjects.txt')
-        always_warn = True # True (testing) always warn about changed nodes.
+        trace = (False or g.app.debug) and not g.unitTesting
+        always_warn = True # True always warn about changed nodes.
         c = self.c
         h, b, gnx, grandChildren = child_tuple
-        ### fileName = c.cacheListFileName
         old_b, new_b = child_v.b, b
         old_h, new_h = child_v.h, h
         # Leo 5.6: test headlines.
-        same_head = old_h == new_h or old_h == 'newHeadline'
+        same_head = old_h == new_h
         same_body = (
             old_b == new_b or
             new_b.endswith('\n') and old_b == new_b[: -1] or
@@ -267,10 +251,10 @@ class Cacher(object):
         child_v.h, child_v.b = h, b
         child_v.setDirty()
         c.changed = True # Tell getLeoFile to propegate dirty nodes.
-    #@+node:ekr.20170622112151.1: *5* cacher.updateChangedClone
+    #@+node:ekr.20170622112151.1: *5* cacher.checkForChangedNodes
     update_warning_given = False
 
-    def updateChangedClone(self, child_tuple, fileName, parent_v):
+    def checkForChangedNodes(self, child_tuple, fileName, parent_v):
         '''
         Update the outline described by child_tuple, including all descendants.
         '''
@@ -279,7 +263,7 @@ class Cacher(object):
         if child_v:
             self.reportChangedClone(child_tuple, child_v, fileName, parent_v)
             for grand_child in grand_children:
-                self.updateChangedClone(grand_child, fileName, child_v)
+                self.checkForChangedNodes(grand_child, fileName, child_v)
         elif not self.update_warning_given:
             self.update_warning_given = True
             g.internalError('no vnode', child_tuple)
