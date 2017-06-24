@@ -142,14 +142,12 @@ class Cacher(object):
         Create outline structure from recursive aList built by makeCacheList.
         '''
         new_read = True
-        trace = False and not g.unitTesting
-        sfn = g.shortFileName(fileName)
-        trace = sfn == 'leoAtFile.py' ###
+        trace = False and not g.unitTesting ### and fileName.find('leoAtFile.py') > -1
         c = self.c
         if not c:
             g.internalError('no c')
         if top:
-            if trace: g.trace(sfn)
+            if trace: g.trace(g.shortFileName(fileName))
             c.cacheListFileName = fileName
         if not aList:
             if trace: g.trace('no list')
@@ -245,12 +243,9 @@ class Cacher(object):
             new_b.endswith('\n') and old_b == new_b[: -1] or
             old_b.endswith('\n') and new_b == old_b[: -1]
         )
-        same = same_head and same_body
-        if trace and h.startswith('at.terminateBody'):
-            g.trace('same %4s old %4s new %s %s' % (
-                same, len(old_b), len(new_b), h))
-        if same:
+        if same_head and same_body:
             return
+        if trace: g.trace('old %4s new %s %s' % (len(old_b), len(new_b), h))
         must_warn = hasattr(child_v, 'tempRoots')
         if not hasattr(child_v, 'tempRoots'):
             child_v.tempRoots = set()
