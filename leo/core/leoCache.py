@@ -138,13 +138,13 @@ class Cacher(object):
     #@+node:ekr.20100208082353.5925: *3* cacher.Reading
     #@+node:ekr.20100208071151.5910: *4* cacher.createOutlineFromCacheList & helpers
     def createOutlineFromCacheList(self, parent_v, aList, fileName, top=True):
-        """
+        '''
         Create outline structure from recursive aList built by makeCacheList.
-        """
+        '''
         new_read = True
         trace = False and not g.unitTesting
         sfn = g.shortFileName(fileName)
-        # trace = trace and sfn == 'leoAtFile.py'
+        trace = sfn == 'leoAtFile.py' ###
         c = self.c
         if not c:
             g.internalError('no c')
@@ -157,27 +157,33 @@ class Cacher(object):
         h, b, gnx, children = aList
         if h is not None:
             v = parent_v
-            v._headString = g.toUnicode(h) # 2017/01/16
-            v._bodyString = g.toUnicode(b) # 2017/01/16
-        n = 0
+            if False and new_read:
+                self.reportChangedClone(
+                    child_tuple = aList,
+                    child_v = v,
+                    fileName = fileName,
+                    parent_v = parent_v,
+                )
+            else:
+                v._headString = g.toUnicode(h) # 2017/01/16
+                v._bodyString = g.toUnicode(b) # 2017/01/16
         for child_tuple in children:
             h, b, gnx, grandChildren = child_tuple
             if trace:
                 g.trace('%9s %3s %s' % (gnx, len(grandChildren), h.strip()))
-            isClone, child_v = self.fastAddLastChild(parent_v, gnx)
+            isClone, child_v = self.fastAddLastChild(fileName, gnx, parent_v)
             if isClone:
                 if new_read:
-                    n += self.updateChangedClone(child_tuple, trace=trace)
+                    self.updateChangedClone(child_tuple, fileName, parent_v)
                 else:
-                    self.reportChangedClone(child_v, b, h, gnx, parent_v)
+                    self.reportChangedClone(child_tuple, child_v, fileName, parent_v)
             else:
                 self.createOutlineFromCacheList(
                     child_v, child_tuple, fileName, top=False)
-        if top and trace: g.trace('%s nodes changed' % n)
     #@+node:ekr.20100208071151.5911: *5* cashe.fastAddLastChild
     # Similar to createThinChild4
 
-    def fastAddLastChild(self, parent_v, gnxString):
+    def fastAddLastChild(self, fileName, gnxString, parent_v):
         '''
         Create new VNode as last child of the receiver.
         If the gnx exists already, create a clone instead of new VNode.
@@ -203,76 +209,85 @@ class Cacher(object):
                 v = leoNodes.VNode(context=c)
                 # This is not an error: it can happen with @auto nodes.
                 # g.trace('**** no gnx for',v,parent_v)
+            # Indicate that this node came from an external file.
+            v.tempRoots = set()
+            v.tempRoots.add(fileName)
         child_v = v
         child_v._linkAsNthChild(parent_v, parent_v.numberOfChildren())
         child_v.setVisited() # Supress warning/deletion of unvisited nodes.
         return is_clone, child_v
     #@+node:ekr.20100705083838.5740: *5* casher.reportChangedClone
-    def reportChangedClone(self, child_v, b, h, gnx, parent_v):
-        trace = (False or g.app.debug) and not g.unitTesting
+    def reportChangedClone(self, child_tuple, child_v, fileName, parent_v):
+        '''
+        Report changes in a cloned node child_v *or* its descendants.
+        
+        Cashed nodes can be out-of-synch with other nodes in two ways:
+        
+        Common: When switching git branches (cloned nodes only)
+        Rare:   When external files have been changed outside Leo
+                (cloned OR uncloned nodes).
+        
+        It is only essential to warn of the rare case.
+        '''
+        trace = (True or g.app.debug) and not g.unitTesting
+        sfn = g.shortFileName(fileName)
+        trace = sfn in ( 'leoAtFile.py', 'leoProjects.txt')
+        always_warn = True # True (testing) always warn about changed nodes.
         c = self.c
-        fileName = c.cacheListFileName
-        old, new = child_v.b, b
-        same = (
-            old == new or
-            new.endswith('\n') and old == new[: -1] or
-            old.endswith('\n') and new == old[: -1])
-        # if trace and not same:
-        if trace and (not same or h == 'writeException'):
-            g.trace('same %s old %s new %s %s %s' % (
-                same, len(old), len(new), h, fileName))
-        # This would make it impossible to clear nodes!
-        # if not new: return same
-        if same: return
-        c.nodeConflictList.append(g.bunch(
-            tag='(cached)',
-            fileName=fileName,
-            gnx=gnx,
-            b_old=child_v.b,
-            h_old=child_v.h,
-            b_new=b,
-            h_new=h,
-            root_v=parent_v,
-        ))
-        # Always issue the warning.
-        g.error("cached read node changed:", child_v.h)
+        h, b, gnx, grandChildren = child_tuple
+        ### fileName = c.cacheListFileName
+        old_b, new_b = child_v.b, b
+        old_h, new_h = child_v.h, h
+        # Leo 5.6: test headlines.
+        same_head = old_h == new_h or old_h == 'newHeadline'
+        same_body = (
+            old_b == new_b or
+            new_b.endswith('\n') and old_b == new_b[: -1] or
+            old_b.endswith('\n') and new_b == old_b[: -1]
+        )
+        same = same_head and same_body
+        if trace and h.startswith('at.terminateBody'):
+            g.trace('same %4s old %4s new %s %s' % (
+                same, len(old_b), len(new_b), h))
+        if same:
+            return
+        must_warn = hasattr(child_v, 'tempRoots')
+        if not hasattr(child_v, 'tempRoots'):
+            child_v.tempRoots = set()
+        child_v.tempRoots.add(fileName)
+        if always_warn or must_warn:
+            c.nodeConflictList.append(g.bunch(
+                tag='(cached)',
+                fileName=fileName,
+                gnx=gnx,
+                b_old=child_v.b,
+                h_old=child_v.h,
+                b_new=b,
+                h_new=h,
+                root_v=parent_v,
+            ))
+        if must_warn:
+            g.error("cached read node changed:", child_v.h)
+        # Always update the node.
         child_v.h, child_v.b = h, b
         child_v.setDirty()
         c.changed = True # Tell getLeoFile to propegate dirty nodes.
     #@+node:ekr.20170622112151.1: *5* cacher.updateChangedClone
     update_warning_given = False
 
-    def updateChangedClone(self, child_tuple, changed=0, level=0, trace=False):
+    def updateChangedClone(self, child_tuple, fileName, parent_v):
         '''
-        Update the child_v nodes and all descendants using child_tuple, an item
-        in the cacher list.
+        Update the outline described by child_tuple, including all descendants.
         '''
-        try:
-            h, b, gnx, grandChildren = child_tuple
-            v = self.c.fileCommands.gnxDict.get(gnx)
-            if v:
-                if v.b != b or v.h != h:
-                    changed += 1
-                if trace:
-                    g.trace('level: %s %s %s' % (level, ' '*level, h.strip()))
-                if v.b != b:
-                    if trace: g.trace('CHANGED BODY:', h.strip())
-                    v.b = b
-                if v.h != h:
-                    if trace: g.trace('CHANGED HEAD:', h.strip())
-                    v.h = h
-                for grand_child in grandChildren:
-                    changed += self.updateChangedClone(
-                        grand_child,
-                        changed=changed,
-                        level=level+1,
-                        trace=trace)
-            elif not self.update_warning_given:
-                self.update_warning_given = True
-                g.internalError('no vnode')
-        except Exception:
-            g.es_exception()
-        return changed
+        junk_h, junk_b, gnx, grand_children = child_tuple
+        child_v = self.c.fileCommands.gnxDict.get(gnx)
+        if child_v:
+            self.reportChangedClone(child_tuple, child_v, fileName, parent_v)
+            for grand_child in grand_children:
+                self.updateChangedClone(grand_child, fileName, child_v)
+        elif not self.update_warning_given:
+            self.update_warning_given = True
+            g.internalError('no vnode', child_tuple)
     #@+node:ekr.20100208082353.5923: *4* cacher.getCachedGlobalFileRatios
     def getCachedGlobalFileRatios(self):
         trace = False and not g.unitTesting

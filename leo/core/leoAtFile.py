@@ -359,7 +359,7 @@ class AtFile(object):
     #@+node:ekr.20100619222623.5918: *4* << Detecting clone conflicts >>
     #@+at
     # 
-    # Changed in read-test 4.
+    # Changed in new-read: 2.
     # 
     # **v.tempRoots**, a *temp* ivar, contains root @file nodes.
     # 
@@ -504,7 +504,7 @@ class AtFile(object):
             if trace: g.trace('No inputFile')
             return False
         # Get the file from the cache if possible.
-        if fromString:
+        if fromString or not g.enableDB:
             s, loaded, fileKey = fromString, False, None
         else:
             s, loaded, fileKey = c.cacher.readFile(fileName, root)
@@ -515,12 +515,20 @@ class AtFile(object):
             force = True # Disable caching.
         if loaded and not force:
             if trace: g.trace('cache hit', sfn)
-            if sfn.startswith('leoAtFile'): g.trace(sfn, fileKey)
+            if 1:
+                for z in ('leoAtFile.py', 'leoCache.py', 'leoProjects.txt'):
+                    if sfn == z:
+                        g.trace(sfn, fileKey)
+                        break
             at.inputFile.close()
             root.clearDirty()
             return True
         if not g.unitTesting:
-            if trace: g.trace('***** cache miss', repr(at.encoding), sfn)
+            if trace:
+                if g.enableDB:
+                    g.trace('cache miss', sfn)
+                else:
+                    g.trace('caching disabled', sfn)
             g.es_print("reading:", root.h)
         if isFileLike:
             if g.unitTesting:
@@ -1241,7 +1249,6 @@ class AtFile(object):
                         delattr(v, 'tempBodyList')
                     if new_body != old_body:
                         at.handleChangedNode(new_body, old_body, p, thinFile)
-                    
     #@+node:ekr.20150309154506.27: *6* at.handleChangedNode
     def handleChangedNode(self, new_body, old_body, p, thinFile):
         '''Set ancestor files dirty and support mod_labels plugin.'''
@@ -1369,7 +1376,7 @@ class AtFile(object):
                 # Just replace the body string
                 v.tempRoots = set()
                 v.setBodyString(new)
-            v.tempRoots.add(self.root)
+            v.tempRoots.add(self.root.h)
         else:
             old = v.bodyString()
             # Warn if the body text has changed. Don't warn about the root node.
